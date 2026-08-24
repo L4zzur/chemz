@@ -1,23 +1,50 @@
-[tool.poetry]
+[project]
 name = "chemz"
 version = "0.1.0"
-description = ""
-authors = ["Popov Nikita <popovnikita01@gmail.com>"]
-license = "MIT"
+description = "Ergonomic, strictly-typed audio metadata & cover art manager (MP3, FLAC)"
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.11"
-pillow = "^10.3.0"
-mutagen = "^1.47.0"
-
-[tool.poetry.group.dev.dependencies]
-black = "^24.4.2"
-isort = "^5.13.2"
-mypy = "^1.10.0"
-Flake8-pyproject = "^1.2.3"
-icecream = "^2.1.3"
+license = { text = "MIT" }
+authors = [
+    { name = "Popov Nikita", email = "popovnikita01@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "mutagen>=1.48.1",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.4",
+    "ty>=0.0.74",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "RUF", # ruff-specific rules
+]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["chemz"]
+combine-as-imports = true
+lines-after-imports = 2
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
