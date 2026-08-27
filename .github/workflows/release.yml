@@ -217,7 +217,9 @@ jobs:
         with:
           tag_name: ${{ steps.config.outputs.tag }}
           body: ${{ steps.changelog.outputs.body }}
-          files: dist/*
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
