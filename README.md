@@ -56,7 +56,7 @@ Manual save and reload:
 audio = AudioFile("track.flac")
 audio.title = "Spill"
 audio.artist = "acloudyskye"
-audio.save()    # Writes changes to disk
+audio.save()  # Writes changes to disk
 
 audio.title = "Temporary Title"
 audio.reload()  # Discards unsaved changes
@@ -69,11 +69,11 @@ Technical stream attributes are extracted directly from the audio header and exp
 ```python
 audio = AudioFile("recording.flac")
 
-duration: float = audio.duration_sec   # Length in seconds (e.g. 248.5)
-bitrate: int    = audio.bitrate_kbps   # Bitrate in kbps (e.g. 320 or FLAC stream rate)
-sample_rate: int = audio.sample_rate   # Sampling rate in Hz (e.g. 44100, 48000)
-channels: int   = audio.channels       # Channel count (1 for mono, 2 for stereo)
-fmt: str        = audio.fmt            # Format identifier ("MP3" or "FLAC")
+duration: float = audio.duration_sec  # Length in seconds (e.g. 248.5)
+bitrate: int = audio.bitrate_kbps  # Bitrate in kbps (e.g. 320 or FLAC stream rate)
+sample_rate: int = audio.sample_rate  # Sampling rate in Hz (e.g. 44100, 48000)
+channels: int = audio.channels  # Channel count (1 for mono, 2 for stereo)
+fmt: str = audio.fmt  # Format identifier ("MP3" or "FLAC")
 ```
 
 ### 3. Cover Art Management
@@ -87,9 +87,9 @@ audio = AudioFile("track.mp3")
 cover_bytes: bytes | None = audio.cover
 
 # Assign cover from raw bytes, Path, or string path
-audio.cover = Path("artwork.png")   # Inferred MIME: image/png
-audio.cover = "artwork.webp"        # Inferred MIME: image/webp
-audio.cover = b"..."                # Explicit bytes (default MIME: image/jpeg)
+audio.cover = Path("artwork.png")  # Inferred MIME: image/png
+audio.cover = "artwork.webp"  # Inferred MIME: image/webp
+audio.cover = b"..."  # Explicit bytes (default MIME: image/jpeg)
 
 # Delete cover art
 del audio.cover
@@ -104,18 +104,27 @@ audio.save()
 For procedural scripts, `chemz` provides direct stateless facade functions:
 
 ```python
-from chemz import read_track, write_track_tags, read_cover_bytes, write_cover_bytes, delete_cover
+from chemz import (
+    read_track,
+    write_track_tags,
+    read_cover_bytes,
+    write_cover_bytes,
+    delete_cover,
+)
 
 # Read metadata snapshot into a TrackRecord dataclass
 record = read_track("track.mp3")
 print(record.artist, record.title, record.duration_sec)
 
 # Write dictionary of tags
-write_track_tags("track.mp3", {
-    "artist": "Burial",
-    "title": "Chemz",
-    "bpm": "146",
-})
+write_track_tags(
+    "track.mp3",
+    {
+        "artist": "Burial",
+        "title": "Chemz",
+        "bpm": "146",
+    },
+)
 
 # Cover operations
 cover = read_cover_bytes("track.mp3")

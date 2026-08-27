@@ -53,6 +53,7 @@ def test_audio_extensions_and_track_record() -> None:
 
 def test_base_first_tag_value_fallback() -> None:
     """Test AudioFormatHandler._first_tag_value logic with various value types."""
+
     class DummyHandler(AudioFormatHandler):
         def read_metadata(self, path: Path) -> dict[str, str]:
             return {}
@@ -90,6 +91,7 @@ def test_base_first_tag_value_fallback() -> None:
 
 def test_base_split_number_total() -> None:
     """Test AudioFormatHandler._split_number_total parsing track/disc numbers."""
+
     class DummyHandler(AudioFormatHandler):
         def read_metadata(self, path: Path) -> dict[str, str]:
             return {}
