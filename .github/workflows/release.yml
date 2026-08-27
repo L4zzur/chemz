@@ -1,0 +1,192 @@
+name: Release & Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag version to test (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
+      dry_run:
+        description: "Dry run (test build & changelog only, do NOT publish to PyPI or create release)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Build, Release & Publish Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve Effective Tag & Mode
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag_name }}"
+            DRY_RUN="${{ inputs.dry_run }}"
+          else
+            TAG="${{ github.ref_name }}"
+            DRY_RUN="false"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "dry_run=$DRY_RUN" >> $GITHUB_OUTPUT
+          echo "Running for tag: $TAG (dry_run: $DRY_RUN)"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Generate Changelog Notes
+        id: changelog
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const currentTag = '${{ steps.config.outputs.tag }}';
+            let releaseNotesBody = '';
+
+            try {
+              const { data: releaseNotes } = await github.rest.repos.generateReleaseNotes({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: currentTag,
+              });
+              releaseNotesBody = releaseNotes.body || '';
+            } catch (err) {
+              core.warning(`Standard generateReleaseNotes note: ${err.message}`);
+              releaseNotesBody = `### Changes in ${currentTag}\n\n- Initial release updates`;
+            }
+
+            let body = releaseNotesBody;
+
+            // Clean up titles: turn "feat(core): message" -> "**core:** message", "fix: message" -> "message"
+            // and replace generic "by @user in #123" with cleaner "in #123"
+            body = body
+              .split('\n')
+              .map(line => {
+                if (/^[\*\-]\s+/.test(line)) {
+                  let cleaned = line.replace(/^[\*\-]\s+/, '- ');
+
+                  const convMatch = cleaned.match(/^- (?:feat|fix|perf|refactor|chore|docs|test|ci|style)(?:\(([^)]+)\))?:\s*(.+)$/i);
+                  if (convMatch) {
+                    const scope = convMatch[1];
+                    const rest = convMatch[2];
+                    if (scope) {
+                      cleaned = `- **${scope}:** ${rest}`;
+                    } else {
+                      cleaned = `- ${rest}`;
+                    }
+                  }
+
+                  cleaned = cleaned.replace(/\s+by\s+@[\w\-\[\]]+\s+in\s+/i, ' in ');
+                  return cleaned;
+                }
+                return line;
+              })
+              .join('\n');
+
+            let compareUrl = '';
+            const fullChangelogMatch = body.match(/\*\*Full Changelog\*\*:\s*(\S+)/);
+            if (fullChangelogMatch) {
+              compareUrl = fullChangelogMatch[1];
+              body = body.replace(/\*\*Full Changelog\*\*:\s*\S+\s*/, '').trim();
+            }
+
+            try {
+              const tagsRes = await github.rest.repos.listTags({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 20
+              });
+              const tags = tagsRes.data;
+              const currentIndex = tags.findIndex(t => t.name === currentTag);
+              const baseTag = (currentIndex !== -1 && currentIndex + 1 < tags.length)
+                ? tags[currentIndex + 1].name
+                : null;
+
+              let commits = [];
+              if (baseTag) {
+                const comp = await github.rest.repos.compareCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  base: baseTag,
+                  head: currentTag
+                });
+                commits = comp.data.commits;
+              } else {
+                const list = await github.rest.repos.listCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  sha: (context.sha || 'HEAD'),
+                  per_page: 100
+                });
+                commits = list.data;
+              }
+
+              const contributorsMap = new Map();
+              for (const c of commits) {
+                const login = c.author?.login;
+                const name = c.commit?.author?.name;
+                if (!login || login.includes('[bot]') || login === 'github-actions') continue;
+                if (!contributorsMap.has(login)) {
+                  contributorsMap.set(login, name || login);
+                }
+              }
+
+              if (contributorsMap.size > 0) {
+                const listStr = Array.from(contributorsMap.entries())
+                  .map(([login, name]) => `${name} ([@${login}](https://github.com/${login}))`)
+                  .join(' · ');
+
+                body += `\n\n### 💜 Contributors\n${listStr}`;
+              }
+
+              if (compareUrl || baseTag) {
+                const targetUrl = compareUrl || `https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${baseTag}...${currentTag}`;
+                const label = baseTag ? `Changes ${baseTag} → ${currentTag}` : `Changes in ${currentTag}`;
+                body += `\n\n---\n📖 [${label}](${targetUrl})\n`;
+              }
+            } catch (err) {
+              core.warning(`Could not format release notes: ${err.message}`);
+            }
+
+            core.setOutput('body', body.trim());
+
+      - name: Preview Changelog in Job Log
+        run: |
+          echo "================ PREVIEW CHANGELOG ================"
+          echo "${{ steps.changelog.outputs.body }}"
+          echo "==================================================="
+
+      - name: Create GitHub Release
+        if: steps.config.outputs.dry_run != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.config.outputs.tag }}
+          body: ${{ steps.changelog.outputs.body }}
+          files: dist/*
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish package distributions to PyPI
+        if: steps.config.outputs.dry_run != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
