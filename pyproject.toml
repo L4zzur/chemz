@@ -11,6 +11,22 @@ requires-python = ">=3.10"
 dependencies = [
     "mutagen>=1.48.1",
 ]
+keywords = ["audio", "metadata", "id3", "vorbis", "flac", "mp3", "tags", "cover-art"]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/L4zzur/chemz"
+Repository = "https://github.com/L4zzur/chemz"
+Issues = "https://github.com/L4zzur/chemz/issues"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
