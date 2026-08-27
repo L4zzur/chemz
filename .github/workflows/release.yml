@@ -72,37 +72,11 @@ jobs:
               releaseNotesBody = releaseNotes.body || '';
             } catch (err) {
               core.warning(`Standard generateReleaseNotes note: ${err.message}`);
-              releaseNotesBody = `### Changes in ${currentTag}\n\n- Initial release updates`;
             }
 
-            let body = releaseNotesBody;
+            let body = releaseNotesBody.trim();
 
-            // Clean up titles: turn "feat(core): message" -> "**core:** message", "fix: message" -> "message"
-            // and replace generic "by @user in #123" with cleaner "in #123"
-            body = body
-              .split('\n')
-              .map(line => {
-                if (/^[\*\-]\s+/.test(line)) {
-                  let cleaned = line.replace(/^[\*\-]\s+/, '- ');
-
-                  const convMatch = cleaned.match(/^- (?:feat|fix|perf|refactor|chore|docs|test|ci|style)(?:\(([^)]+)\))?:\s*(.+)$/i);
-                  if (convMatch) {
-                    const scope = convMatch[1];
-                    const rest = convMatch[2];
-                    if (scope) {
-                      cleaned = `- **${scope}:** ${rest}`;
-                    } else {
-                      cleaned = `- ${rest}`;
-                    }
-                  }
-
-                  cleaned = cleaned.replace(/\s+by\s+@[\w\-\[\]]+\s+in\s+/i, ' in ');
-                  return cleaned;
-                }
-                return line;
-              })
-              .join('\n');
-
+            // Extract default "Full Changelog" URL if present
             let compareUrl = '';
             const fullChangelogMatch = body.match(/\*\*Full Changelog\*\*:\s*(\S+)/);
             if (fullChangelogMatch) {
@@ -111,10 +85,11 @@ jobs:
             }
 
             try {
+              // Fetch tag history to determine commit range
               const tagsRes = await github.rest.repos.listTags({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                per_page: 20
+                per_page: 30
               });
               const tags = tagsRes.data;
               const currentIndex = tags.findIndex(t => t.name === currentTag);
@@ -135,12 +110,71 @@ jobs:
                 const list = await github.rest.repos.listCommits({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  sha: (context.sha || 'HEAD'),
+                  sha: (context.sha || currentTag || 'HEAD'),
                   per_page: 100
                 });
                 commits = list.data;
               }
 
+              // If standard generateReleaseNotes was empty or had no list items (e.g. initial release or direct commits without PRs)
+              if (!body.includes('- ') && !body.includes('* ')) {
+                const feats = [];
+                const fixes = [];
+                const others = [];
+
+                for (const c of commits) {
+                  const firstLine = c.commit?.message?.split('\n')[0]?.trim() || '';
+                  if (!firstLine || firstLine.startsWith('Bump version') || firstLine.startsWith('Merge ') || firstLine.startsWith('chore(release)')) {
+                    continue;
+                  }
+
+                  const shortSha = c.sha ? c.sha.substring(0, 7) : '';
+                  const commitUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${c.sha}`;
+                  const link = `[\`${shortSha}\`](${commitUrl})`;
+
+                  const convMatch = firstLine.match(/^(feat|fix|perf|refactor|chore|docs|test|ci|style)(?:\(([^)]+)\))?:\s*(.+)$/i);
+                  if (convMatch) {
+                    const type = convMatch[1].toLowerCase();
+                    const scope = convMatch[2];
+                    const msg = convMatch[3];
+                    const item = scope ? `- **${scope}:** ${msg} in ${link}` : `- ${msg} in ${link}`;
+
+                    if (type === 'feat') feats.push(item);
+                    else if (type === 'fix') fixes.push(item);
+                    else others.push(item);
+                  } else {
+                    others.push(`- ${firstLine} in ${link}`);
+                  }
+                }
+
+                let generatedSections = [];
+                if (feats.length > 0) generatedSections.push(`### 🎧 Features\n${feats.join('\n')}`);
+                if (fixes.length > 0) generatedSections.push(`### 🩹 Fixes\n${fixes.join('\n')}`);
+                if (others.length > 0) generatedSections.push(`### ⚙️ Chore\n${others.join('\n')}`);
+
+                body = generatedSections.join('\n\n');
+              } else {
+                // Clean up standard PR bullet points
+                body = body
+                  .split('\n')
+                  .map(line => {
+                    if (/^[\*\-]\s+/.test(line)) {
+                      let cleaned = line.replace(/^[\*\-]\s+/, '- ');
+                      const convMatch = cleaned.match(/^- (?:feat|fix|perf|refactor|chore|docs|test|ci|style)(?:\(([^)]+)\))?:\s*(.+)$/i);
+                      if (convMatch) {
+                        const scope = convMatch[1];
+                        const rest = convMatch[2];
+                        cleaned = scope ? `- **${scope}:** ${rest}` : `- ${rest}`;
+                      }
+                      cleaned = cleaned.replace(/\s+by\s+@[\w\-\[\]]+\s+in\s+/i, ' in ');
+                      return cleaned;
+                    }
+                    return line;
+                  })
+                  .join('\n');
+              }
+
+              // Contributors
               const contributorsMap = new Map();
               for (const c of commits) {
                 const login = c.author?.login;
@@ -159,9 +193,10 @@ jobs:
                 body += `\n\n### 💜 Contributors\n${listStr}`;
               }
 
+              // Compare link
               if (compareUrl || baseTag) {
                 const targetUrl = compareUrl || `https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${baseTag}...${currentTag}`;
-                const label = baseTag ? `Changes ${baseTag} → ${currentTag}` : `Changes in ${currentTag}`;
+                const label = `Changes ${baseTag} → ${currentTag}`;
                 body += `\n\n---\n📖 [${label}](${targetUrl})\n`;
               }
             } catch (err) {
